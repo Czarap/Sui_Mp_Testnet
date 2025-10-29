@@ -3,7 +3,7 @@ import { useCurrentAccount,
     useSuiClient,
 } from '@mysten/dapp-kit';
 import { Transaction } from "@mysten/sui/transactions";
-import { CONTRACTMODULEMETHOD, CONTRACTMODULENAME, CONTRACTPACKAGEID } from '../configs/network';
+import { CONTRACTMODULEMETHOD, CONTRACTMODULENAME, CONTRACTPACKAGEID } from '../configs/constants';
 import { useState } from 'react';
 
 const Minter = () => {
