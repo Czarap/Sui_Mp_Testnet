@@ -91,7 +91,6 @@ export default function Marketplace() {
                     },
                     options: { showObjectChanges: true },
                     limit: 25,
-                    order: 'descending',
                 });
                 const createdIds: string[] = [];
                 for (const tx of txResp.data as any[]) {
@@ -99,7 +98,10 @@ export default function Marketplace() {
                     for (const ch of changes) {
                         if (ch.type === 'created') {
                             const typ = String(ch.objectType || '');
-                            if (!typ.includes(`::${MARKETPLACE_MODULE}::`) || (LISTING_STRUCT_NAME && !typ.endsWith(`::${LISTING_STRUCT_NAME}`))) continue;
+                            // Accept any created type in this package that ends with ::Listing (or your configured name)
+                            const inPackage = typ.startsWith(`${CONTRACTPACKAGEID}::`);
+                            const endsWithListing = LISTING_STRUCT_NAME ? typ.endsWith(`::${LISTING_STRUCT_NAME}`) : typ.endsWith('::Listing');
+                            if (!(inPackage && endsWithListing)) continue;
                             createdIds.push(ch.objectId as string);
                         }
                     }
@@ -125,6 +127,30 @@ export default function Marketplace() {
                 return { items, next: null, prev: null } as { items: Listing[]; next: string | null; prev: string | null };
             }
 
+            // Fallback 3: heuristic scan for objects in this package that look like listings
+            if (items.length === 0) {
+                const respAny: any = await clientAny.queryObjects({
+                    filter: { Package: CONTRACTPACKAGEID },
+                    options: { showContent: true },
+                    limit: 200,
+                });
+                const guessed: Listing[] = (respAny.data as any[])
+                    .map((o: any) => o.data)
+                    .filter((d: any) => !!d && d.content?.dataType === 'moveObject')
+                    .map((d: any) => ({ d, fields: (d.content as any).fields }))
+                    .filter(({ fields }: any) => fields && (fields.price !== undefined) && (fields.seller !== undefined))
+                    .map(({ d, fields }: any) => {
+                        const nftId = (fields?.nft_id?.id ?? fields?.nft_id ?? '') as any;
+                        return {
+                            objectId: d.objectId as string,
+                            nftId: String(nftId),
+                            price: BigInt(fields.price ?? 0),
+                            seller: String(fields.seller ?? ''),
+                        } as Listing;
+                    });
+                return { items: guessed, next: null, prev: null } as { items: Listing[]; next: string | null; prev: string | null };
+            }
+
             return { items, next: respExact.nextCursor ?? null, prev: respExact.prevCursor ?? null } as { items: Listing[]; next: string | null; prev: string | null };
         },
         initialData: { items: [], next: null, prev: null },
@@ -143,7 +169,7 @@ export default function Marketplace() {
             ],
         });
         signAndExecute(
-            { transaction: txb },
+            { transaction: txb as any },
             {
                 onSuccess: async ({ digest }) => {
                     await suiClient.waitForTransaction({ digest });
@@ -162,7 +188,7 @@ export default function Marketplace() {
             arguments: [txb.object(listing.objectId)],
         });
         signAndExecute(
-            { transaction: txb },
+            { transaction: txb as any },
             {
                 onSuccess: async ({ digest }) => {
                     await suiClient.waitForTransaction({ digest });

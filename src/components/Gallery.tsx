@@ -48,7 +48,7 @@ function Gallery() {
     // When not connected: fetch a public feed of recent NFTs by type
     const { data: publicNfts = [], isLoading: isLoadingPublic } = useQuery({
         queryKey: ['public-nfts', structType],
-        enabled: !account && !!structType,
+        enabled: !!structType,
         queryFn: async () => {
             // Fallback to any-typed queryObjects for SDKs that expose it; otherwise return empty feed
             const clientAny: any = suiClient as any;
@@ -84,8 +84,8 @@ function Gallery() {
         return true;
     });
 
-    const feed = account ? merged : publicNfts;
-    const loading = account ? isLoading : isLoadingPublic;
+    const feed = publicNfts.length > 0 ? publicNfts : (account ? merged : publicNfts);
+    const loading = isLoadingPublic || (account && publicNfts.length === 0 ? isLoading : false);
     const hasItems = feed.length > 0;
 
     const onList = (nftObjectId: string, priceSui: string) => {
@@ -100,7 +100,7 @@ function Gallery() {
             arguments: [txb.pure.id(nftObjectId), txb.pure.u64(mist)],
         });
         signAndExecute(
-            { transaction: txb },
+            { transaction: txb as any },
             {
                 onSuccess: async ({ digest }) => {
                     await suiClient.waitForTransaction({ digest });

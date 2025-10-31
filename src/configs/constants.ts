@@ -11,3 +11,5 @@ export const LIST_METHOD = "list_nft_for_sale";
 export const BUY_METHOD = "buy_nft";
 export const CANCEL_METHOD = "cancel_listing";
 export const LISTING_STRUCT_NAME = "Listing";
+// Optional: public gallery address to show display NFTs when not connected
+export const PUBLIC_GALLERY_ADDRESS = ""; // e.g. 0xabc... on testnet
