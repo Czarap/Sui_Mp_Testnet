@@ -29,7 +29,6 @@ function App() {
                 <WalletProvider>
                   <NftProvider>
                   <Header />
-                  <Home />
                   <section className="hero">
                     <div className="container hero-inner">
                       <div className="hero-copy">
@@ -44,6 +43,7 @@ function App() {
                       </div>
                     </div>
                   </section>
+                  <Home />
                   <main className='app-main container'>
                     <section id="mint" className="section">
                       <div className="section-head">

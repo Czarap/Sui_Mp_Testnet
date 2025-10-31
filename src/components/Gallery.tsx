@@ -10,18 +10,26 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 function Gallery() {
+    const decodeField = (v: any): string => {
+        if (typeof v === 'string') return v;
+        if (Array.isArray(v)) {
+            try { return new TextDecoder().decode(Uint8Array.from(v)); } catch { return ''; }
+        }
+        return '';
+    };
     const { mintedNfts } = useNftContext();
     const account = useCurrentAccount();
     const suiClient = useSuiClient();
     const qc = useQueryClient();
     const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+    const [listError, setListError] = useState<string | null>(null);
 
     const structType = CONTRACTPACKAGEID && CONTRACTMODULENAME && NFT_STRUCT_NAME
         ? `${CONTRACTPACKAGEID}::${CONTRACTMODULENAME}::${NFT_STRUCT_NAME}`
         : '';
 
     // When connected: fetch NFTs owned by the wallet
-    const { data: chainNfts = [], isLoading } = useQuery({
+    const { data: chainNfts = [] } = useQuery({
         queryKey: ['owned-nfts', account?.address, structType],
         enabled: !!account && !!structType,
         queryFn: async () => {
@@ -37,16 +45,16 @@ function Gallery() {
                     const fields: any = (d.content as any).fields;
                     return {
                         objectId: d.objectId,
-                        name: String(fields.name ?? ''),
-                        description: String(fields.description ?? ''),
-                        imageUrl: String(fields.url ?? ''),
+                        name: decodeField(fields.name),
+                        description: decodeField(fields.description),
+                        imageUrl: decodeField(fields.url),
                     };
                 });
         },
     });
 
     // When not connected: fetch a public feed of recent NFTs by type
-    const { data: publicNfts = [], isLoading: isLoadingPublic } = useQuery({
+    const { data: publicNfts = [] } = useQuery({
         queryKey: ['public-nfts', structType],
         enabled: !!structType,
         queryFn: async () => {
@@ -58,18 +66,66 @@ function Gallery() {
                 options: { showContent: true },
                 limit: 24,
             });
-            return (resp.data as any[])
+            let items = (resp.data as any[])
                 .map((o: any) => o.data)
                 .filter((d: any) => !!d && d.content?.dataType === 'moveObject')
                 .map((d: any) => {
                     const fields: any = (d.content as any).fields;
                     return {
                         objectId: d.objectId as string,
-                        name: String(fields.name ?? ''),
-                        description: String(fields.description ?? ''),
-                        imageUrl: String(fields.url ?? ''),
+                        name: decodeField(fields.name),
+                        description: decodeField(fields.description),
+                        imageUrl: decodeField(fields.url),
                     } as any;
                 });
+            // Package fallback in case the NFT struct name/module differ
+            if (items.length === 0) {
+                const respPkg: any = await clientAny.queryObjects({
+                    filter: { Package: CONTRACTPACKAGEID },
+                    options: { showContent: true },
+                    limit: 50,
+                });
+                items = (respPkg.data as any[])
+                    .map((o: any) => o.data)
+                    .filter((d: any) => !!d && d.content?.dataType === 'moveObject')
+                    .map((d: any) => {
+                        const fields: any = (d.content as any).fields;
+                        return {
+                            objectId: d.objectId as string,
+                            name: decodeField(fields?.name),
+                            description: decodeField(fields?.description),
+                            imageUrl: decodeField(fields?.url),
+                        } as any;
+                    })
+                    .filter((n: any) => n.imageUrl || n.name || n.description);
+            }
+            // Event fallback: MintNFTEvent → fetch object_id
+            if (items.length === 0 && clientAny.queryTransactionBlocks) {
+                const eventType = `${CONTRACTPACKAGEID}::${CONTRACTMODULENAME}::MintNFTEvent`;
+                const txs: any = await clientAny.queryTransactionBlocks({
+                    filter: { MoveEventType: eventType },
+                    options: { showEvents: true },
+                    limit: 20,
+                    order: 'descending',
+                });
+                const ids: string[] = [];
+                for (const tx of txs.data as any[]) {
+                    const evs: any[] = tx.events || [];
+                    for (const ev of evs) {
+                        if (ev.type === eventType && ev.parsedJson?.object_id) ids.push(String(ev.parsedJson.object_id));
+                    }
+                }
+                for (const id of ids) {
+                    try {
+                        const o: any = await suiClient.getObject({ id, options: { showContent: true } });
+                        const data: any = o?.data; const content: any = data?.content;
+                        if (content?.dataType !== 'moveObject') continue;
+                        const f: any = content.fields;
+                        items.push({ objectId: id, name: decodeField(f?.name), description: decodeField(f?.description), imageUrl: decodeField(f?.url) });
+                    } catch {}
+                }
+            }
+            return items;
         },
     });
 
@@ -85,19 +141,30 @@ function Gallery() {
     });
 
     const feed = publicNfts.length > 0 ? publicNfts : (account ? merged : publicNfts);
-    const loading = isLoadingPublic || (account && publicNfts.length === 0 ? isLoading : false);
     const hasItems = feed.length > 0;
 
-    const onList = (nftObjectId: string, priceSui: string) => {
+    const onList = async (nftObjectId: string, priceSui: string) => {
         if (!account) return;
+        setListError(null);
+        // Ensure current wallet owns the NFT
+        try {
+            const obj = await suiClient.getObject({ id: nftObjectId, options: { showOwner: true } });
+            const owner = (obj as any)?.data?.owner?.AddressOwner;
+            if (!owner || owner.toLowerCase() !== account.address.toLowerCase()) {
+                setListError('You must own this NFT in the connected wallet to list it.');
+                return;
+            }
+        } catch {
+            // ignore owner check failures
+        }
         const price = Number(priceSui);
         if (!isFinite(price) || price <= 0) return;
         const mist = BigInt(Math.floor(price * 1_000_000_000));
         const txb = new Transaction();
-        // Many listing functions take an ID, not the full object. Use ID for compatibility.
+        // Pass the full object; many list functions require the owned object, not just its ID
         txb.moveCall({
             target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${LIST_METHOD}`,
-            arguments: [txb.pure.id(nftObjectId), txb.pure.u64(mist)],
+            arguments: [txb.object(nftObjectId), txb.pure.u64(mist)],
         });
         signAndExecute(
             { transaction: txb as any },
@@ -106,19 +173,20 @@ function Gallery() {
                     await suiClient.waitForTransaction({ digest });
                     qc.invalidateQueries({ queryKey: ['listings'] });
                 },
+                onError: (e) => {
+                    setListError(String(e));
+                },
             },
         );
     };
     return (
         <section id="gallery" className="section">
             <div className="container">
-                <div className="section-head">
-                    <h2>{account ? 'Your Minted NFTs' : 'Latest NFTs'}</h2>
-                    {loading && <p className="muted">Loading NFTs…</p>}
-                    {!loading && !hasItems && (
-                        <p className="muted">No NFTs found{account ? ' for this wallet' : ''}.</p>
-                    )}
-                </div>
+                {hasItems && (
+                    <div className="section-head">
+                        <h2>{account ? 'Your Minted NFTs' : 'Latest NFTs'}</h2>
+                    </div>
+                )}
                 {hasItems && (
                     <div className="nft-grid">
                         {feed.map((nft) => {
@@ -127,7 +195,10 @@ function Gallery() {
                                 <div key={nft.objectId}>
                                     <NFTCard imageUrl={nft.imageUrl} name={nft.name} description={nft.description} />
                                     {isOwnedView && (
-                                        <ListControl onList={(price) => onList(nft.objectId, price)} />
+                                        <>
+                                            <ListControl onList={(price) => onList(nft.objectId, price)} />
+                                            {listError && <p className="muted" style={{ color: '#ffb3ae' }}>{listError}</p>}
+                                        </>
                                     )}
                                 </div>
                             );

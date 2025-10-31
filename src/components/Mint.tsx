@@ -64,7 +64,7 @@ const Minter = () => {
 
         signAndExecute(
             {
-                transaction: txb,
+                transaction: txb as any,
             },
             {
                 onSuccess: async ({ digest }) => {
@@ -164,9 +164,7 @@ const Minter = () => {
                         )}
                     </div>
                 </div>
-            ) : (
-                <p>Connect your wallet to mint an NFT.</p>
-            )}
+            ) : null}
         </div>
     );
 };

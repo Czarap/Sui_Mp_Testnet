@@ -6,10 +6,11 @@ export const ADMIN_ADDRESS = "0xaaf18cde7fee39af70225e997c5ac1b533a574f75746f717
 export const MARKETPLACE_MODULE = "nft_marketplace"; 
 export const WITHDRAW_METHOD = "withdraw_marketplace_fees";
 export const NFT_STRUCT_NAME = "DevNetNFT"; 
-// Listing operations (fill with your actual function names)
+
 export const LIST_METHOD = "list_nft_for_sale";
 export const BUY_METHOD = "buy_nft";
 export const CANCEL_METHOD = "cancel_listing";
 export const LISTING_STRUCT_NAME = "Listing";
-// Optional: public gallery address to show display NFTs when not connected
-export const PUBLIC_GALLERY_ADDRESS = ""; // e.g. 0xabc... on testnet
+
+export const PUBLIC_GALLERY_ADDRESS = "0x82be626e2e767172a8086bf0911c7172f0ff33bcf5eb960d517873e1f323f20a";
+
