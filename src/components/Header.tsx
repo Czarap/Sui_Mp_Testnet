@@ -27,7 +27,7 @@ function Header() {
                 <nav className="nav-actions">
                     <a className="nav-link" href="#home">Home</a>
                     <a className="nav-link" href="#mint">Mint</a>
-                    <a className="nav-link" href="#gallery">Gallery</a>
+             
                     {account && (
                         <span className="nav-link" title={account.address}>
                             {balance?.toFixed(3)} SUI

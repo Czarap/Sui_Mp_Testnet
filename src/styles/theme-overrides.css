@@ -1,0 +1,6 @@
+/* Ensure our theme colors override any earlier CSS imports */
+:root {
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --sidebar-primary: #3b82f6;
+}

@@ -1,7 +1,7 @@
 import { useCurrentAccount, useSuiClient, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { useQuery } from '@tanstack/react-query';
 import NFTCard from './NFTCard';
-import { CONTRACTPACKAGEID, CONTRACTMODULENAME, NFT_STRUCT_NAME, MARKETPLACE_MODULE, LISTING_STRUCT_NAME, BUY_METHOD, MARKETPLACE_ID, CANCEL_METHOD } from '../configs/constants';
+import { CONTRACTPACKAGEID, CONTRACTMODULENAME, MARKETPLACE_MODULE, LISTING_STRUCT_NAME, BUY_METHOD, MARKETPLACE_ID, NFT_STRUCT_NAME, CANCEL_METHOD } from '../configs/constants';
 import NFTGalleryDisplay from './NFTGalleryDisplay';
 import { Transaction } from '@mysten/sui/transactions';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,83 +20,98 @@ export default function Home() {
     const { mutate: signAndExecute } = useSignAndExecuteTransaction();
     const qc = useQueryClient();
     const [galleryRefresh, setGalleryRefresh] = useState(0);
-    const structType = CONTRACTPACKAGEID && CONTRACTMODULENAME && NFT_STRUCT_NAME
-        ? `${CONTRACTPACKAGEID}::${CONTRACTMODULENAME}::${NFT_STRUCT_NAME}`
-        : '';
+    // structType not required for All Minted after switching to package-wide fetch
 
-    const { data: publicNfts = [], isLoading } = useQuery({
-        queryKey: ['home-public-nfts', structType],
-        enabled: !!structType,
+    const { data: ownedIds = [] } = useQuery({
+        queryKey: ['owned-ids', account?.address],
+        enabled: !!account,
+        queryFn: async () => {
+            const resp = await suiClient.getOwnedObjects({ owner: account!.address, options: { showContent: true } });
+            return resp.data.map((e: any) => String(e.data?.objectId || '').toLowerCase());
+        },
+        initialData: [],
+    });
+
+    // NFTs minted by the connected wallet (even if transferred/listed) — event-based
+    type MyMintedCard = { objectId: string; name?: string; description?: string; imageUrl?: string };
+    const { data: myMintedExtra = [] } = useQuery<MyMintedCard[]>({
+        queryKey: ['my-minted-extra', account?.address],
+        enabled: !!account,
         queryFn: async () => {
             const clientAny: any = suiClient as any;
-            if (!clientAny.queryObjects) return [] as any[];
-            const resp: any = await clientAny.queryObjects({
-                filter: { StructType: structType },
-                options: { showContent: true },
-                limit: 36,
+            if (!clientAny.queryTransactionBlocks) return [];
+            const eventType = `${CONTRACTPACKAGEID}::${CONTRACTMODULENAME}::MintNFTEvent`;
+            const txs: any = await clientAny.queryTransactionBlocks({
+                filter: { MoveEventType: eventType },
+                options: { showEvents: true },
+                limit: 80,
+                order: 'descending',
             });
-            let items = (resp.data as any[])
-                .map((o: any) => o.data)
-                .filter((d: any) => !!d && d.content?.dataType === 'moveObject')
-                .map((d: any) => {
-                    const fields: any = (d.content as any).fields;
-                    return {
-                        objectId: d.objectId as string,
-                        name: decodeField(fields.name),
-                        description: decodeField(fields.description),
-                        imageUrl: decodeField(fields.url),
-                    } as any;
-                });
-            if (items.length === 0) {
-                const respPkg: any = await clientAny.queryObjects({
-                    filter: { Package: CONTRACTPACKAGEID },
-                    options: { showContent: true },
-                    limit: 50,
-                });
-                items = (respPkg.data as any[])
-                    .map((o: any) => o.data)
-                    .filter((d: any) => !!d && d.content?.dataType === 'moveObject')
-                    .map((d: any) => {
-                        const fields: any = (d.content as any).fields;
-                        return {
-                            objectId: d.objectId as string,
-                            name: decodeField(fields?.name),
-                            description: decodeField(fields?.description),
-                            imageUrl: decodeField(fields?.url),
-                        } as any;
-                    })
-                    .filter((n: any) => n.imageUrl || n.name || n.description);
+            const ids: string[] = [];
+            for (const tx of txs.data as any[]) {
+                const evs: any[] = tx.events || [];
+                for (const ev of evs) {
+                    const isMine = ev.type === eventType && String(ev.parsedJson?.creator || '').toLowerCase() === account!.address.toLowerCase();
+                    if (isMine && ev.parsedJson?.object_id) ids.push(String(ev.parsedJson.object_id));
+                }
             }
-            // Fallback to recent MintNFTEvent events → fetch those object IDs
-            if (items.length === 0 && clientAny.queryTransactionBlocks) {
-                const eventType = `${CONTRACTPACKAGEID}::${CONTRACTMODULENAME}::MintNFTEvent`;
-                const txs: any = await clientAny.queryTransactionBlocks({
-                    filter: { MoveEventType: eventType },
-                    options: { showEvents: true },
-                    limit: 20,
-                    order: 'descending',
-                });
-                const ids: string[] = [];
-                for (const tx of txs.data as any[]) {
-                    const evs: any[] = tx.events || [];
-                    for (const ev of evs) {
-                        if (ev.type === eventType && ev.parsedJson?.object_id) ids.push(String(ev.parsedJson.object_id));
+            const out: MyMintedCard[] = [];
+            for (const id of ids) {
+                if (ownedIds.includes(id.toLowerCase())) continue; // skip ones already shown in owned gallery
+                try {
+                    const o: any = await suiClient.getObject({ id, options: { showContent: true, showDisplay: true } as any });
+                    const d: any = o?.data; const disp: any = d?.display?.data; const content: any = d?.content;
+                    if (content?.dataType !== 'moveObject') continue;
+                    const f: any = content.fields;
+                    const decode = (v: any) => (typeof v === 'string' ? v : Array.isArray(v) ? new TextDecoder().decode(Uint8Array.from(v)) : '');
+                    const name = disp?.name ? decode(disp.name) : decode(f?.name);
+                    const description = disp?.description ? decode(disp.description) : decode(f?.description);
+                    const imageUrl = decode(disp?.image_url || disp?.image || f?.url || f?.image || f?.image_url || '');
+                    out.push({ objectId: id, name, description, imageUrl });
+                } catch {}
+            }
+            return out;
+        },
+        initialData: [],
+    });
+    const { data: allMintedNfts = [], isLoading: loadingMinted } = useQuery({
+        queryKey: ['all-minted-nfts', CONTRACTPACKAGEID],
+        enabled: !!CONTRACTPACKAGEID,
+        queryFn: async () => {
+            const clientAny: any = suiClient as any;
+            const items: any[] = [];
+            const txs: any = await clientAny.queryTransactionBlocks({
+                filter: {
+                    MoveFunction: {
+                        package: CONTRACTPACKAGEID,
+                        module: CONTRACTMODULENAME,
+                        function: 'mint_to_sender',
+                    },
+                },
+                options: { showObjectChanges: true },
+                limit: 50,
+                order: 'descending',
+            });
+            const ids: string[] = [];
+            for (const tx of txs.data as any[]) {
+                const oc: any[] = tx.objectChanges || [];
+                for (const ch of oc) {
+                    if (ch.type === 'created' && String(ch.objectType || '').endsWith(`::${NFT_STRUCT_NAME}`)) {
+                        ids.push(ch.objectId as string);
                     }
                 }
-                for (const id of ids) {
-                    try {
-                        const o: any = await suiClient.getObject({ id, options: { showContent: true } });
-                        const data: any = o?.data; const content: any = data?.content;
-                        if (content?.dataType !== 'moveObject') continue;
-                        const f: any = content.fields;
-                        items.push({
-                            objectId: id,
-                            name: decodeField(f?.name),
-                            description: decodeField(f?.description),
-                            imageUrl: decodeField(f?.url),
-                        });
-                    } catch {}
-                }
+            }
+            for (const id of ids.slice(0, 50)) {
+                try {
+                    const o: any = await suiClient.getObject({ id, options: { showContent: true, showDisplay: true } as any });
+                    const d: any = o?.data; const disp: any = d?.display?.data; const content: any = d?.content;
+                    if (content?.dataType !== 'moveObject') continue;
+                    const f: any = content.fields;
+                    const name = disp?.name ? decodeField(disp.name) : decodeField(f?.name);
+                    const description = disp?.description ? decodeField(disp.description) : decodeField(f?.description);
+                    const img = decodeField(disp?.image_url || disp?.image || f?.url || f?.image || f?.image_url || '');
+                    items.push({ objectId: id, name: name || 'Unnamed NFT', description: description || `Object ID: ${id}`, imageUrl: img || 'https://picsum.photos/seed/sui/600/600' });
+                } catch {}
             }
             return items;
         },
@@ -190,10 +205,11 @@ export default function Home() {
     });
 
     // My minted NFTs (by event), enriched with listing state; shows even when NFT is listed (not owned)
-    type MyMinted = { objectId: string; name?: string; description?: string; imageUrl?: string; listingId?: string };
+    // type MyMinted = { objectId: string; name?: string; description?: string; imageUrl?: string; listingId?: string };
+    /*
     const { data: myMinted = [] } = useQuery<MyMinted[]>({
         queryKey: ['my-minted', account?.address],
-        enabled: !!account,
+        enabled: false, // retained for future use; disabled now
         queryFn: async () => {
             const clientAny: any = suiClient as any;
             if (!clientAny.queryTransactionBlocks) return [];
@@ -249,60 +265,56 @@ export default function Home() {
         initialData: [],
         staleTime: 10_000,
     });
+    */
 
     return (
         <section id="home" className="section">
             <div className="container">
-                <div className="section-head">
-                    <h2>All Minted NFTs</h2>
-                    {isLoading && <p className="muted">Loading NFTs…</p>}
-                    {!isLoading && publicNfts.length === 0 && <p className="muted">No NFTs found.</p>}
-                </div>
-                {publicNfts.length > 0 && (
-                    <div className="nft-grid">
-                        {publicNfts.map((nft: any) => (
-                            <NFTCard key={nft.objectId} imageUrl={nft.imageUrl} name={nft.name} description={nft.description} />
-                        ))}
+                <div className="section" style={{ paddingTop: 24 }}>
+                    <div className="section-head">
+                        <h3>All Minted NFTs</h3>
+                        {loadingMinted && <p className="muted">Loading minted NFTs…</p>}
+                        {!loadingMinted && allMintedNfts.length === 0 && (
+                            <p className="muted">No minted NFTs found yet.</p>
+                        )}
                     </div>
-                )}
-                {account && myMinted.length > 0 && (
-                    <div className="section" style={{ paddingTop: 24 }}>
-                        <div className="section-head">
-                            <h3>My Minted</h3>
-                        </div>
+                    {allMintedNfts.length > 0 && (
                         <div className="nft-grid">
-                            {myMinted.map((m) => (
-                                <div key={m.objectId}>
-                                    <NFTCard imageUrl={m.imageUrl || ''} name={m.name || 'Minted NFT'} description={m.description || ''} />
-                                    {m.listingId && (
-                                        <button
-                                            className="button"
-                                            onClick={() => {
-                                                const txb = new Transaction();
-                                                txb.moveCall({
-                                                    target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${CANCEL_METHOD}`,
-                                                    arguments: [txb.object(m.listingId!)],
-                                                });
-                                                signAndExecute(
-                                                    { transaction: txb as any },
-                                                    {
-                                                        onSuccess: async ({ digest }) => {
-                                                            await suiClient.waitForTransaction({ digest });
-                                                            qc.invalidateQueries({ queryKey: ['my-minted'] });
-                                                            qc.invalidateQueries({ queryKey: ['home-listings'] });
+                            {allMintedNfts.map((nft: any) => (
+                                <div>
+                                    <NFTCard imageUrl={nft.imageUrl} name={nft.name} description={nft.description} />
+                                    {nft.listingId && account && account.address.toLowerCase() === String(nft.seller || '').toLowerCase() && (
+                                        <div style={{ marginTop: 8 }}>
+                                            <button
+                                                className="button"
+                                                onClick={() => {
+                                                    const txb = new Transaction();
+                                                    txb.moveCall({
+                                                        target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${CANCEL_METHOD}`,
+                                                        arguments: [txb.object(nft.listingId)],
+                                                    });
+                                                    signAndExecute(
+                                                        { transaction: txb as any },
+                                                        {
+                                                            onSuccess: async ({ digest }) => {
+                                                                await suiClient.waitForTransaction({ digest });
+                                                                qc.invalidateQueries({ queryKey: ['home-listings'] });
+                                                                qc.invalidateQueries({ queryKey: ['all-minted-nfts'] });
+                                                            },
                                                         },
-                                                    },
-                                                );
-                                            }}
-                                        >
-                                            Cancel Listing
-                                        </button>
+                                                    );
+                                                }}
+                                            >
+                                                Cancel Listing
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             ))}
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
+           
                 {homeListings.length > 0 && (
                     <div className="section" style={{ paddingTop: 24 }}>
                         <div className="section-head">
@@ -313,45 +325,78 @@ export default function Home() {
                                 <div key={l.objectId}>
                                     <NFTCard imageUrl={l.imageUrl || ''} name={l.name || `Listing`} description={`Price: ${(Number(l.price)/1_000_000_000).toFixed(3)} SUI • Seller: ${l.seller.substring(0,10)}…`} />
                                     <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                                        <button
-                                            className="button primary"
-                                            disabled={!account || account.address.toLowerCase() === l.seller.toLowerCase()}
-                                            onClick={() => {
-                                                if (!account || account.address.toLowerCase() === l.seller.toLowerCase()) return;
-                                                const txb = new Transaction();
-                                                const payment = txb.splitCoins(txb.gas, [txb.pure.u64(l.price)]);
-                                                txb.moveCall({
-                                                    target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${BUY_METHOD}`,
-                                                    arguments: [txb.object(l.objectId), payment, txb.object(MARKETPLACE_ID)],
-                                                });
-                                                signAndExecute(
-                                                    { transaction: txb as any },
-                                                    {
-                                                        onSuccess: async ({ digest }) => {
-                                                            await suiClient.waitForTransaction({ digest });
-                                                            qc.invalidateQueries({ queryKey: ['home-listings'] });
-                                                            qc.invalidateQueries({ queryKey: ['owned-nfts'] });
-                                                            setGalleryRefresh((x) => x + 1);
+                                        {account && account.address.toLowerCase() === l.seller.toLowerCase() ? (
+                                            <button
+                                                className="button"
+                                                onClick={() => {
+                                                    const txb = new Transaction();
+                                                    txb.moveCall({
+                                                        target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${CANCEL_METHOD}`,
+                                                        arguments: [txb.object(l.objectId)],
+                                                    });
+                                                    signAndExecute(
+                                                        { transaction: txb as any },
+                                                        {
+                                                            onSuccess: async ({ digest }) => {
+                                                                await suiClient.waitForTransaction({ digest });
+                                                                qc.invalidateQueries({ queryKey: ['home-listings'] });
+                                                                qc.invalidateQueries({ queryKey: ['owned-nfts'] });
+                                                                setGalleryRefresh((x) => x + 1);
+                                                            },
                                                         },
-                                                    },
-                                                );
-                                            }}
-                                        >
-                                            {account && account.address.toLowerCase() === l.seller.toLowerCase() ? 'Your Listing' : 'Buy'}
-                                        </button>
+                                                    );
+                                                }}
+                                            >
+                                                Cancel Listing
+                                            </button>
+                                        ) : (
+                                            <button
+                                                className="button primary"
+                                                disabled={!account}
+                                                onClick={() => {
+                                                    if (!account) return;
+                                                    const txb = new Transaction();
+                                                    const payment = txb.splitCoins(txb.gas, [txb.pure.u64(l.price)]);
+                                                    txb.moveCall({
+                                                        target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${BUY_METHOD}`,
+                                                        arguments: [txb.object(l.objectId), payment, txb.object(MARKETPLACE_ID)],
+                                                    });
+                                                    signAndExecute(
+                                                        { transaction: txb as any },
+                                                        {
+                                                            onSuccess: async ({ digest }) => {
+                                                                await suiClient.waitForTransaction({ digest });
+                                                                qc.invalidateQueries({ queryKey: ['home-listings'] });
+                                                                qc.invalidateQueries({ queryKey: ['owned-nfts'] });
+                                                                setGalleryRefresh((x) => x + 1);
+                                                            },
+                                                        },
+                                                    );
+                                                }}
+                                            >
+                                                Buy
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
-                {/* Removed wallet display gallery to avoid duplication with Minted NFTs section */}
+               
                 {account && (
                     <div className="section" style={{ paddingTop: 24 }}>
                         <div className="section-head">
                             <h3>Gallery</h3>
                         </div>
                         <NFTGalleryDisplay ownerAddress={account.address} key={account.address + ':' + galleryRefresh} />
+                        {myMintedExtra.length > 0 && (
+                            <div className="nft-grid" style={{ marginTop: 16 }}>
+                                {myMintedExtra.map((n) => (
+                                    <NFTCard key={n.objectId} imageUrl={n.imageUrl || ''} name={n.name || 'Minted NFT'} description={n.description || `Object ID: ${n.objectId}`} />
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

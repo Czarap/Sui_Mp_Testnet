@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Minter from './components/Mint';
 import Header from './components/Header';
 import Footer from './components/Footer';
-import Gallery from './components/Gallery';
 import { NftProvider } from './context/NftContext';
 import AdminPanel from './components/AdminPanel';
 import Marketplace from './components/Marketplace';
@@ -56,7 +55,6 @@ function App() {
                         </div>
                       </div>
                     </section>
-                    <Gallery />
                     <Marketplace />
                     <AdminPanel />
                   </main>
