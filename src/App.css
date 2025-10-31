@@ -1,8 +1,5 @@
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  width: 100%;
 }
 
 .logo {
@@ -41,31 +38,94 @@
   color: #888;
 }
 
-.mint-button {
-  margin-top: 1em;
+/* Utility */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
 }
 
-.mint-form {
+.muted { color: #888; }
+
+.button {
+  border-radius: 10px;
+  border: 1px solid rgba(100,108,255,0.25);
+  padding: 0.75em 1.25em;
+  font-size: 1rem;
+  font-weight: 600;
+  background: #1a1a1a;
+  color: #fff;
+}
+.button.primary { background: linear-gradient(135deg, #646cff, #7a7fff); border-color: transparent; }
+.button.full { width: 100%; }
+
+.app-header {
+  position: sticky;
+  top: 0;
+  backdrop-filter: blur(6px);
+  background: color-mix(in oklab, transparent, black 15%);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  z-index: 10;
+}
+.header-inner {
   display: flex;
-  flex-direction: column;
-  gap: 1em;
-  margin-top: 2em;
+  justify-content: space-between;
   align-items: center;
+  height: 64px;
 }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-badge { background: #646cff; color: #fff; padding: 6px 10px; border-radius: 8px; font-weight: 800; letter-spacing: 0.5px; }
+.brand-text { font-weight: 700; font-size: 1.1rem; }
+.nav-actions { display: flex; align-items: center; gap: 14px; }
+.nav-link { color: #aeb0ff; }
 
-.mint-input {
-  padding: 0.5em;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  font-size: 1em;
-  width: 80%;
-}
+.hero { padding: 64px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.hero-inner { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: center; }
+.hero-copy h1 { font-size: 40px; margin: 0 0 10px; }
+.hero-copy p { margin: 0 0 16px; }
+.hero-art { position: relative; height: 320px; }
+.blob { position: absolute; inset: 0; border-radius: 24px; filter: blur(24px); opacity: 0.8; }
+.blob.b1 { background: radial-gradient(closest-side, #646cff, transparent); transform: translate(-20%, -10%); }
+.blob.b2 { background: radial-gradient(closest-side, #ff6aa6, transparent); transform: translate(20%, 10%); }
+.blob.b3 { background: radial-gradient(closest-side, #23d5ab, transparent); transform: translate(0%, 0%); }
+
+.app-main { padding: 32px 0 64px; }
+.section { padding: 24px 0; }
+.section-head { margin-bottom: 16px; }
+
+.mint-layout { display: grid; grid-template-columns: 1fr; gap: 24px; }
+.mint-card { display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; align-items: start; }
+.mint-panel { width: 100%; }
+.mint-preview { position: sticky; top: 88px; }
+
+.mint-form { display: flex; flex-direction: column; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.label { font-size: 0.9rem; color: #a0a0a0; }
+.input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.25); color: inherit; }
+
+.nft-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.nft-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: hidden; }
+.nft-media { aspect-ratio: 1 / 1; background: rgba(255,255,255,0.04); }
+.nft-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.nft-info { padding: 12px; text-align: left; }
+.nft-title { margin: 0 0 6px; font-size: 1.05rem; }
+.nft-desc { margin: 0 0 10px; color: #a0a0a0; font-size: 0.95rem; }
 
 .success-message {
   margin-top: 1em;
   padding: 1em;
-  border: 1px solid #4caf50;
-  border-radius: 4px;
-  background-color: #f0fff0;
-  color: #4caf50;
+  border: 1px solid #2e7d32;
+  border-radius: 10px;
+  background-color: rgba(46, 125, 50, 0.15);
+  color: #9be69b;
+}
+
+.app-footer { border-top: 1px solid rgba(255,255,255,0.08); padding: 20px 0; }
+.footer-inner { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
+@media (max-width: 900px) {
+  .hero-inner { grid-template-columns: 1fr; }
+  .mint-card { grid-template-columns: 1fr; }
+  .mint-preview { position: static; }
 }

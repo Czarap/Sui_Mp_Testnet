@@ -5,6 +5,8 @@ import { useCurrentAccount,
 import { Transaction } from "@mysten/sui/transactions";
 import { CONTRACTMODULEMETHOD, CONTRACTMODULENAME, CONTRACTPACKAGEID } from '../configs/constants';
 import { useState } from 'react';
+import NFTCard from './NFTCard';
+import { useNftContext } from '../context/NftContext';
 
 const Minter = () => {
     const suiClient = useSuiClient();
@@ -15,12 +17,15 @@ const Minter = () => {
     const [url, setUrl] = useState('');
     const [isMinting, setIsMinting] = useState(false);
     const [mintedNftId, setMintedNftId] = useState<string | null>(null);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const { addMintedNft } = useNftContext();
 
     const mintNFT = () => {
         if (!account) {
             return;
         }
 
+        setErrorMessage(null);
         setIsMinting(true);
         setMintedNftId(null);
 
@@ -28,6 +33,25 @@ const Minter = () => {
         const contractAddress = CONTRACTPACKAGEID;
         const contractModuleName = CONTRACTMODULENAME;
         const contractMethod = CONTRACTMODULEMETHOD;
+
+        // Basic config validation to avoid invalid target errors
+        const isHex = (v: string) => /^0x[0-9a-fA-F]+$/.test(v);
+        const isIdent = (v: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(v);
+        if (!contractAddress || !isHex(contractAddress)) {
+            setIsMinting(false);
+            setErrorMessage('Invalid CONTRACTPACKAGEID. Please set a valid 0x… package id in src/configs/constants.ts');
+            return;
+        }
+        if (!contractModuleName || !isIdent(contractModuleName)) {
+            setIsMinting(false);
+            setErrorMessage('Missing CONTRACTMODULENAME. Set your Move module name in src/configs/constants.ts');
+            return;
+        }
+        if (!contractMethod || !isIdent(contractMethod)) {
+            setIsMinting(false);
+            setErrorMessage('Missing CONTRACTMODULEMETHOD. Set your entry function name in src/configs/constants.ts');
+            return;
+        }
 
         txb.moveCall({
             target: `${contractAddress}::${contractModuleName}::${contractMethod}`,
@@ -53,7 +77,14 @@ const Minter = () => {
                         });
 
                         if (effects?.created?.[0]?.reference?.objectId) {
-                            setMintedNftId(effects.created[0].reference.objectId);
+                            const objectId = effects.created[0].reference.objectId;
+                            setMintedNftId(objectId);
+                            addMintedNft({
+                                objectId,
+                                name: name || 'Untitled',
+                                description: description || '',
+                                imageUrl: url || 'https://picsum.photos/seed/preview/600/600',
+                            });
                             setName('');
                             setDescription('');
                             setUrl('');
@@ -62,8 +93,9 @@ const Minter = () => {
                         setIsMinting(false);
                     }
                 },
-                onError: () => {
+                onError: (e) => {
                     setIsMinting(false);
+                    setErrorMessage(`Mint failed: ${String(e)}`);
                 }
             },
         );
@@ -72,40 +104,65 @@ const Minter = () => {
     return (
         <div>
             {account ? (
-                <div className="mint-form">
-                    <input
-                        className="mint-input"
-                        type="text"
-                        placeholder="Name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        disabled={isMinting}
-                    />
-                    <input
-                        className="mint-input"
-                        type="text"
-                        placeholder="Description"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        disabled={isMinting}
-                    />
-                    <input
-                        className="mint-input"
-                        type="text"
-                        placeholder="URL"
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        disabled={isMinting}
-                    />
-                    <button className="mint-button" onClick={mintNFT} disabled={isMinting}>
-                        {isMinting ? 'Minting...' : 'Mint Your NFT'}
-                    </button>
-                    {mintedNftId && (
-                        <div className="success-message">
-                            <p>NFT Minted Successfully!</p>
-                            <p>Object ID: {mintedNftId}</p>
+                <div className="mint-card">
+                    <div className="mint-form">
+                        <label className="field">
+                            <span className="label">Name</span>
+                            <input
+                                className="input"
+                                type="text"
+                                placeholder="e.g. Oceanic Dream"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                disabled={isMinting}
+                            />
+                        </label>
+                        <label className="field">
+                            <span className="label">Description</span>
+                            <input
+                                className="input"
+                                type="text"
+                                placeholder="A short description"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                disabled={isMinting}
+                            />
+                        </label>
+                        <label className="field">
+                            <span className="label">Image URL</span>
+                            <input
+                                className="input"
+                                type="text"
+                                placeholder="https://... .png / .jpg"
+                                value={url}
+                                onChange={(e) => setUrl(e.target.value)}
+                                disabled={isMinting}
+                            />
+                        </label>
+                        <button className="button primary full" onClick={mintNFT} disabled={isMinting}>
+                            {isMinting ? 'Minting…' : 'Mint Your NFT'}
+                        </button>
+                    {errorMessage && (
+                        <div className="success-message" style={{ borderColor: '#e53935', backgroundColor: 'rgba(229,57,53,0.15)', color: '#ffb3ae' }}>
+                            {errorMessage}
                         </div>
                     )}
+                        {mintedNftId && (
+                            <div className="success-message">
+                                <p>NFT Minted Successfully!</p>
+                                <p>Object ID: {mintedNftId}</p>
+                            </div>
+                        )}
+                    </div>
+                    <div className="mint-preview">
+                        {url && (
+                            <NFTCard
+                                imageUrl={url}
+                                name={name || undefined}
+                                description={description || undefined}
+                            />
+                        )}
+                    </div>
                 </div>
             ) : (
                 <p>Connect your wallet to mint an NFT.</p>
