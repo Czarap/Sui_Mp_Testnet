@@ -1,6 +1,7 @@
 import { useCurrentAccount,
     useSignAndExecuteTransaction,
     useSuiClient,
+    ConnectButton,
 } from '@mysten/dapp-kit';
 import { Transaction } from "@mysten/sui/transactions";
 import { CONTRACTMODULEMETHOD, CONTRACTMODULENAME, CONTRACTPACKAGEID } from '../configs/constants';
@@ -164,7 +165,12 @@ const Minter = () => {
                         )}
                     </div>
                 </div>
-            ) : null}
+            ) : (
+                <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+                    <p className="muted" style={{ marginBottom: 24 }}>Connect your wallet to mint an NFT</p>
+                    <ConnectButton />
+                </div>
+            )}
         </div>
     );
 };

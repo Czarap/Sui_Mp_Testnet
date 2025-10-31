@@ -8,6 +8,8 @@ import { NftProvider } from './context/NftContext';
 import AdminPanel from './components/AdminPanel';
 import Marketplace from './components/Marketplace';
 import Home from './components/Home';
+import Activity from './components/Activity';
+import { useEffect, useState } from 'react';
 import './App.css';
 import { StrictMode } from 'react';
 
@@ -21,6 +23,16 @@ const { networkConfig } = createNetworkConfig({
 const queryClient = new QueryClient();
 
 function App() {
+  const [route, setRoute] = useState<string>(() => (window.location.hash || '#/').replace('#', ''));
+  useEffect(() => {
+    const onHash = () => setRoute((window.location.hash || '#/').replace('#', ''));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  const isActivity = route.startsWith('/activity');
+  const isHome = !isActivity;
+
   return (
     <StrictMode>
         <QueryClientProvider client={queryClient}>
@@ -42,8 +54,19 @@ function App() {
                       </div>
                     </div>
                   </section>
-                  <Home />
+                  {isHome && <Home />}
+                  {isActivity && (
+                    <main className='app-main container'>
+                      <section className="section">
+                        <div className="section-head">
+                          <h2>Marketplace Activity</h2>
+                        </div>
+                        <Activity />
+                      </section>
+                    </main>
+                  )}
                   <main className='app-main container'>
+                    {isHome && (
                     <section id="mint" className="section">
                       <div className="section-head">
                         <h2>Mint an NFT</h2>
@@ -55,8 +78,9 @@ function App() {
                         </div>
                       </div>
                     </section>
-                    <Marketplace />
-                    <AdminPanel />
+                    )}
+                    {isHome && <Marketplace />}
+                    {isHome && <AdminPanel />}
                   </main>
                   <Footer />
                   </NftProvider>

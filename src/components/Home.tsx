@@ -5,7 +5,7 @@ import { CONTRACTPACKAGEID, CONTRACTMODULENAME, MARKETPLACE_MODULE, LISTING_STRU
 import NFTGalleryDisplay from './NFTGalleryDisplay';
 import { Transaction } from '@mysten/sui/transactions';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 export default function Home() {
     const suiClient = useSuiClient();
@@ -17,7 +17,6 @@ export default function Home() {
         }
         return '';
     };
-    const { mutate: signAndExecute } = useSignAndExecuteTransaction();
     const qc = useQueryClient();
     const [galleryRefresh, setGalleryRefresh] = useState(0);
     // structType not required for All Minted after switching to package-wide fetch
@@ -204,7 +203,7 @@ export default function Home() {
         initialData: [],
     });
 
-    // My minted NFTs (by event), enriched with listing state; shows even when NFT is listed (not owned)
+
     // type MyMinted = { objectId: string; name?: string; description?: string; imageUrl?: string; listingId?: string };
     /*
     const { data: myMinted = [] } = useQuery<MyMinted[]>({
@@ -271,118 +270,37 @@ export default function Home() {
         <section id="home" className="section">
             <div className="container">
                 <div className="section" style={{ paddingTop: 24 }}>
-                    <div className="section-head">
-                        <h3>All Minted NFTs</h3>
-                        {loadingMinted && <p className="muted">Loading minted NFTs…</p>}
-                        {!loadingMinted && allMintedNfts.length === 0 && (
-                            <p className="muted">No minted NFTs found yet.</p>
+                    <div className="section-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <h3>All Minted NFTs</h3>
+                            {loadingMinted && <p className="muted">Loading minted NFTs…</p>}
+                            {!loadingMinted && allMintedNfts.length === 0 && (
+                                <p className="muted">No minted NFTs found yet.</p>
+                            )}
+                        </div>
+                        {allMintedNfts.length > 0 && (
+                            <a href="#/activity" className="button" style={{ textDecoration: 'none' }}>See All</a>
                         )}
                     </div>
                     {allMintedNfts.length > 0 && (
-                        <div className="nft-grid">
-                            {allMintedNfts.map((nft: any) => (
-                                <div>
-                                    <NFTCard imageUrl={nft.imageUrl} name={nft.name} description={nft.description} />
-                                    {nft.listingId && account && account.address.toLowerCase() === String(nft.seller || '').toLowerCase() && (
-                                        <div style={{ marginTop: 8 }}>
-                                            <button
-                                                className="button"
-                                                onClick={() => {
-                                                    const txb = new Transaction();
-                                                    txb.moveCall({
-                                                        target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${CANCEL_METHOD}`,
-                                                        arguments: [txb.object(nft.listingId)],
-                                                    });
-                                                    signAndExecute(
-                                                        { transaction: txb as any },
-                                                        {
-                                                            onSuccess: async ({ digest }) => {
-                                                                await suiClient.waitForTransaction({ digest });
-                                                                qc.invalidateQueries({ queryKey: ['home-listings'] });
-                                                                qc.invalidateQueries({ queryKey: ['all-minted-nfts'] });
-                                                            },
-                                                        },
-                                                    );
-                                                }}
-                                            >
-                                                Cancel Listing
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                        <NFTCarousel nfts={allMintedNfts} account={account} />
                     )}
                 </div>
            
                 {homeListings.length > 0 && (
                     <div className="section" style={{ paddingTop: 24 }}>
-                        <div className="section-head">
+                        <div className="section-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3>Latest Listings</h3>
+                            <a href="#/activity" className="button" style={{ textDecoration: 'none' }}>See All</a>
                         </div>
-                        <div className="nft-grid">
-                            {homeListings.map((l) => (
-                                <div key={l.objectId}>
-                                    <NFTCard imageUrl={l.imageUrl || ''} name={l.name || `Listing`} description={`Price: ${(Number(l.price)/1_000_000_000).toFixed(3)} SUI • Seller: ${l.seller.substring(0,10)}…`} />
-                                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                                        {account && account.address.toLowerCase() === l.seller.toLowerCase() ? (
-                                            <button
-                                                className="button"
-                                                onClick={() => {
-                                                    const txb = new Transaction();
-                                                    txb.moveCall({
-                                                        target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${CANCEL_METHOD}`,
-                                                        arguments: [txb.object(l.objectId)],
-                                                    });
-                                                    signAndExecute(
-                                                        { transaction: txb as any },
-                                                        {
-                                                            onSuccess: async ({ digest }) => {
-                                                                await suiClient.waitForTransaction({ digest });
-                                                                qc.invalidateQueries({ queryKey: ['home-listings'] });
-                                                                qc.invalidateQueries({ queryKey: ['owned-nfts'] });
-                                                                setGalleryRefresh((x) => x + 1);
-                                                            },
-                                                        },
-                                                    );
-                                                }}
-                                            >
-                                                Cancel Listing
-                                            </button>
-                                        ) : (
-                                            <button
-                                                className="button primary"
-                                                disabled={!account}
-                                                onClick={() => {
-                                                    if (!account) return;
-                                                    const txb = new Transaction();
-                                                    const payment = txb.splitCoins(txb.gas, [txb.pure.u64(l.price)]);
-                                                    txb.moveCall({
-                                                        target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${BUY_METHOD}`,
-                                                        arguments: [txb.object(l.objectId), payment, txb.object(MARKETPLACE_ID)],
-                                                    });
-                                                    signAndExecute(
-                                                        { transaction: txb as any },
-                                                        {
-                                                            onSuccess: async ({ digest }) => {
-                                                                await suiClient.waitForTransaction({ digest });
-                                                                qc.invalidateQueries({ queryKey: ['home-listings'] });
-                                                                qc.invalidateQueries({ queryKey: ['owned-nfts'] });
-                                                                setGalleryRefresh((x) => x + 1);
-                                                            },
-                                                        },
-                                                    );
-                                                }}
-                                            >
-                                                Buy
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        <ListingCarousel listings={homeListings} account={account} onAfterTx={() => {
+                            qc.invalidateQueries({ queryKey: ['home-listings'] });
+                            qc.invalidateQueries({ queryKey: ['owned-nfts'] });
+                            setGalleryRefresh((x) => x + 1);
+                        }} />
                     </div>
                 )}
+                {/* Activity moved to its own page (see Activity.tsx) */}
                
                 {account && (
                     <div className="section" style={{ paddingTop: 24 }}>
@@ -401,6 +319,176 @@ export default function Home() {
                 )}
             </div>
         </section>
+    );
+}
+
+function NFTCarousel({ nfts, account }: { nfts: any[]; account: any }) {
+    const carouselRef = useRef<HTMLDivElement>(null);
+    const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+    const qc = useQueryClient();
+    const suiClient = useSuiClient();
+
+    const scrollLeft = () => {
+        if (carouselRef.current) {
+            carouselRef.current.scrollBy({ left: -300, behavior: 'smooth' });
+        }
+    };
+
+    const scrollRight = () => {
+        if (carouselRef.current) {
+            carouselRef.current.scrollBy({ left: 300, behavior: 'smooth' });
+        }
+    };
+
+    return (
+        <div style={{ position: 'relative' }}>
+            <button
+                onClick={scrollLeft}
+                style={{
+                    position: 'absolute',
+                    left: -20,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    zIndex: 10,
+                    background: 'linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.6))',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: 40,
+                    height: 40,
+                    color: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '20px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
+                }}
+                aria-label="Scroll left"
+            >
+                ‹
+            </button>
+            <div
+                ref={carouselRef}
+                style={{
+                    display: 'flex',
+                    gap: 16,
+                    overflowX: 'auto',
+                    overflowY: 'hidden',
+                    scrollBehavior: 'smooth',
+                    padding: '8px 0',
+                    scrollbarWidth: 'none',
+                    alignItems: 'stretch',
+                }}
+                className="no-scrollbar"
+            >
+                {nfts.map((nft: any) => (
+                    <div key={nft.objectId} style={{ minWidth: 280, maxWidth: 280, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            <NFTCard imageUrl={nft.imageUrl} name={nft.name} description={nft.description} />
+                        </div>
+                        {nft.listingId && account && account.address.toLowerCase() === String(nft.seller || '').toLowerCase() && (
+                            <div style={{ marginTop: 8 }}>
+                                <button
+                                    className="button"
+                                    onClick={() => {
+                                        const txb = new Transaction();
+                                        txb.moveCall({
+                                            target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${CANCEL_METHOD}`,
+                                            arguments: [txb.object(nft.listingId)],
+                                        });
+                                        signAndExecute(
+                                            { transaction: txb as any },
+                                            {
+                                                onSuccess: async ({ digest }) => {
+                                                    await suiClient.waitForTransaction({ digest });
+                                                    qc.invalidateQueries({ queryKey: ['home-listings'] });
+                                                    qc.invalidateQueries({ queryKey: ['all-minted-nfts'] });
+                                                },
+                                            },
+                                        );
+                                    }}
+                                >
+                                    Cancel Listing
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+            <button
+                onClick={scrollRight}
+                style={{
+                    position: 'absolute',
+                    right: -20,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    zIndex: 10,
+                    background: 'linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.6))',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: 40,
+                    height: 40,
+                    color: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '20px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
+                }}
+                aria-label="Scroll right"
+            >
+                ›
+            </button>
+        </div>
+    );
+}
+
+function ListingCarousel({ listings, account, onAfterTx }: { listings: any[]; account: any; onAfterTx: () => void }) {
+    const carouselRef = useRef<HTMLDivElement>(null);
+    const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+    const suiClient = useSuiClient();
+
+    const scrollLeft = () => carouselRef.current?.scrollBy({ left: -300, behavior: 'smooth' });
+    const scrollRight = () => carouselRef.current?.scrollBy({ left: 300, behavior: 'smooth' });
+
+    return (
+        <div style={{ position: 'relative' }}>
+            <button onClick={scrollLeft} style={{ position: 'absolute', left: -20, top: '50%', transform: 'translateY(-50%)', zIndex: 10, background: 'linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.6))', border: 'none', borderRadius: '50%', width: 40, height: 40, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }} aria-label="Scroll left">‹</button>
+            <div ref={carouselRef} className="no-scrollbar" style={{ display: 'flex', gap: 16, overflowX: 'auto', overflowY: 'hidden', scrollBehavior: 'smooth', padding: '8px 0', scrollbarWidth: 'none', alignItems: 'stretch' }}>
+                {listings.map((l: any) => (
+                    <div key={l.objectId} style={{ minWidth: 280, maxWidth: 280, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            <NFTCard imageUrl={l.imageUrl || ''} name={l.name || `Listing`} description={`Price: ${(Number(l.price)/1_000_000_000).toFixed(3)} SUI • Seller: ${l.seller.substring(0,10)}…`} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                            {account && account.address.toLowerCase() === l.seller.toLowerCase() ? (
+                                <button className="button" onClick={() => {
+                                    const txb = new Transaction();
+                                    txb.moveCall({ target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${CANCEL_METHOD}`, arguments: [txb.object(l.objectId)] });
+                                    signAndExecute(
+                                        { transaction: txb as any },
+                                        { onSuccess: async ({ digest }) => { await suiClient.waitForTransaction({ digest }); onAfterTx(); } },
+                                    );
+                                }}>Cancel Listing</button>
+                            ) : (
+                                <button className="button primary" disabled={!account} onClick={() => {
+                                    if (!account) return;
+                                    const txb = new Transaction();
+                                    const payment = txb.splitCoins(txb.gas, [txb.pure.u64(l.price)]);
+                                    txb.moveCall({ target: `${CONTRACTPACKAGEID}::${MARKETPLACE_MODULE}::${BUY_METHOD}`, arguments: [txb.object(l.objectId), payment, txb.object(MARKETPLACE_ID)] });
+                                    signAndExecute(
+                                        { transaction: txb as any },
+                                        { onSuccess: async ({ digest }) => { await suiClient.waitForTransaction({ digest }); onAfterTx(); } },
+                                    );
+                                }}>Buy</button>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <button onClick={scrollRight} style={{ position: 'absolute', right: -20, top: '50%', transform: 'translateY(-50%)', zIndex: 10, background: 'linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.6))', border: 'none', borderRadius: '50%', width: 40, height: 40, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }} aria-label="Scroll right">›</button>
+        </div>
     );
 }
 

@@ -27,6 +27,7 @@ function Header() {
                 <nav className="nav-actions">
                     <a className="nav-link" href="#home">Home</a>
                     <a className="nav-link" href="#mint">Mint</a>
+                    <a className="nav-link" href="#/activity">Activity</a>
              
                     {account && (
                         <span className="nav-link" title={account.address}>
