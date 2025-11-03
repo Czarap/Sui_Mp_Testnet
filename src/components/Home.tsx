@@ -272,15 +272,13 @@ export default function Home() {
                 <div className="section" style={{ paddingTop: 24 }}>
                     <div className="section-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                            <h3>All Minted NFTs</h3>
+                            <h3>All NFTs</h3>
                             {loadingMinted && <p className="muted">Loading minted NFTs…</p>}
                             {!loadingMinted && allMintedNfts.length === 0 && (
                                 <p className="muted">No minted NFTs found yet.</p>
                             )}
                         </div>
-                        {allMintedNfts.length > 0 && (
-                            <a href="#/activity" className="button" style={{ textDecoration: 'none' }}>See All</a>
-                        )}
+
                     </div>
                     {allMintedNfts.length > 0 && (
                         <NFTCarousel nfts={allMintedNfts} account={account} />
@@ -291,7 +289,6 @@ export default function Home() {
                     <div className="section" style={{ paddingTop: 24 }}>
                         <div className="section-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3>Latest Listings</h3>
-                            <a href="#/activity" className="button" style={{ textDecoration: 'none' }}>See All</a>
                         </div>
                         <ListingCarousel listings={homeListings} account={account} onAfterTx={() => {
                             qc.invalidateQueries({ queryKey: ['home-listings'] });
